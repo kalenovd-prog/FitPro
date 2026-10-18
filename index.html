@@ -132,7 +132,10 @@ textarea.fld{min-height:84px;resize:vertical}
 .day-h{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--line)}
 .day-edit{padding:12px 14px;border-bottom:1px solid var(--line);background:var(--surface-2);display:flex;flex-direction:column;gap:10px}
 .exrow{width:100%;text-align:left;background:transparent;border:0;border-top:1px solid var(--line);padding:12px 14px;display:flex;justify-content:space-between;gap:12px;align-items:baseline}
-.exrow:first-of-type{border-top:0}
+.exline{display:flex;align-items:stretch;border-top:1px solid var(--line)}
+.exline .exrow{border-top:0;flex:1;min-width:0}
+.xdel{flex:none;min-width:48px;border:0;background:transparent;color:var(--muted);font-size:22px;line-height:1;padding:0 12px;border-left:1px solid var(--line)}
+.xdel.armed{background:var(--bad);color:var(--bg);font-size:14px;font-weight:600;border-left-color:var(--bad)}
 .exrow .nm{font-weight:500}
 .exrow .nt{display:block;font-size:13px;color:var(--muted)}
 .exedit{padding:12px 14px;background:var(--surface-2);border-top:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
@@ -285,19 +288,6 @@ const METRICS=[
 const EXERCISES=['Приседания со штангой','Приседания с резинкой','Жим штанги лёжа','Жим гантелей лёжа','Жим гантелей сидя','Тяга верхнего блока','Тяга нижнего блока','Тяга гантели в наклоне','Тяга резинки к поясу','Становая тяга','Румынская тяга','Жим ногами','Выпады','Болгарский сплит-присед','Ягодичный мостик','Отведение ноги с резинкой','Подъём на носки','Сгибание ног лёжа','Разгибание ног в тренажёре','Махи гантелей в стороны','Сгибание рук с гантелями','Разгибание рук на блоке','Отжимания','Подтягивания','Гиперэкстензия','Скручивания','Планка'];
 $('#exlist').innerHTML=EXERCISES.map(n=>'<option value="'+esc(n)+'">').join('');
 
-function mkEx(n,s,r,note){return {id:uid(),name:n,sets:String(s),reps:String(r),note:note||''}}
-const TEMPLATES={
-  empty:()=>[],
-  full:()=>[
-    {id:uid(),title:'Фулбади A',exercises:[mkEx('Приседания со штангой',3,8),mkEx('Жим гантелей лёжа',3,10),mkEx('Тяга верхнего блока',3,10),mkEx('Ягодичный мостик',3,12),mkEx('Планка',3,'40 сек')]},
-    {id:uid(),title:'Фулбади B',exercises:[mkEx('Румынская тяга',3,10),mkEx('Жим гантелей сидя',3,10),mkEx('Тяга нижнего блока',3,12),mkEx('Выпады',3,10),mkEx('Скручивания',3,15)]}
-  ],
-  split:()=>[
-    {id:uid(),title:'Верх',exercises:[mkEx('Жим штанги лёжа',4,8),mkEx('Тяга верхнего блока',3,10),mkEx('Жим гантелей сидя',3,10),mkEx('Сгибание рук с гантелями',3,12),mkEx('Разгибание рук на блоке',3,12)]},
-    {id:uid(),title:'Низ',exercises:[mkEx('Приседания со штангой',4,8),mkEx('Румынская тяга',3,10),mkEx('Жим ногами',3,12),mkEx('Сгибание ног лёжа',3,12),mkEx('Подъём на носки',3,15)]}
-  ]
-};
-const TPL_LABEL={empty:'Пустая',full:'Фулбади A/B',split:'Верх / низ'};
 
 /* ---------- state ---------- */
 let clients=[],ready=false,mode='local',dbc=null,currentId=null;
@@ -818,7 +808,8 @@ function viewProg(c){
     d.exercises.forEach((ex,xi)=>{
       const gx=gl[xi];
       const editing=ui.editEx&&ui.editEx.dayId===d.id&&ui.editEx.exId===ex.id;
-      h+='<button class="exrow'+(gx?' lnk':'')+'" data-act="editex" data-day="'+esc(d.id)+'" data-id="'+esc(ex.id)+'"><span>'+(gx&&gx.first?'<span class="gtype">'+GNAME(gx.size)+' '+gx.letter+'</span>':'')+'<span class="nm">'+(gx?'<span class="gl">'+gx.letter+gx.pos+'</span>':'')+esc(ex.name)+'</span>'+(ex.note?'<span class="nt">'+esc(ex.note)+'</span>':'')+'</span><span class="plan">'+esc(ex.sets||'?')+'×'+esc(ex.reps||'?')+'</span></button>';
+      const dk='delexrow:'+ex.id,dOn=ui.armed===dk;
+      h+='<div class="exline"><button class="exrow'+(gx?' lnk':'')+'" data-act="editex" data-day="'+esc(d.id)+'" data-id="'+esc(ex.id)+'"><span>'+(gx&&gx.first?'<span class="gtype">'+GNAME(gx.size)+' '+gx.letter+'</span>':'')+'<span class="nm">'+(gx?'<span class="gl">'+gx.letter+gx.pos+'</span>':'')+esc(ex.name)+'</span>'+(ex.note?'<span class="nt">'+esc(ex.note)+'</span>':'')+'</span><span class="plan">'+esc(ex.sets||'?')+'×'+esc(ex.reps||'?')+'</span></button><button class="xdel'+(dOn?' armed':'')+'" data-act="delexrow" data-id="'+esc(ex.id)+'" aria-label="Удалить упражнение '+esc(ex.name)+'">'+(dOn?'Удалить?':'×')+'</button></div>';
       if(editing){
         h+='<div class="exedit"><label class="lab">Название<input class="fld" list="exlist" data-f="e.name" value="'+fv('e.name',ex.name)+'"></label>'+
           '<div class="grid2"><label class="lab">Подходы<input class="fld" inputmode="numeric" data-f="e.sets" value="'+fv('e.sets',ex.sets)+'"></label><label class="lab">Повторы<input class="fld" data-f="e.reps" value="'+fv('e.reps',ex.reps)+'"></label></div>'+
@@ -845,13 +836,15 @@ function viewClient(c){
     '<div class="row-actions"><button class="btn" data-act="saveprofile">Сохранить</button>'+armBtn('delclient',c.id,'Удалить клиента')+'</div></section>'+backupHtml();
 }
 function lastBackup(){try{return localStorage.getItem(LB)||''}catch(e){return ''}}
+function mkEx(n,s,r,note){return {id:uid(),name:n,sets:String(s),reps:String(r),note:note||''}}
+const APP_VER='Версия 10 · 18.10.2026';
 function backupHtml(){
   const lb=lastBackup();
   return '<section class="panel"><h2>Резервная копия</h2>'+
     '<p class="muted" style="margin:0 0 10px">'+(mode==='db'?'Данные хранятся в общей базе. Копия нужна на всякий случай.':'Данные хранятся только в этом браузере. Сохраняйте копию после тренировок: если очистить данные Safari, журнал пропадёт.')+'</p>'+
     '<p class="muted" style="margin:0 0 10px">'+(lb?'Последняя копия: '+esc(lb):'Копию ещё не сохраняли.')+'</p>'+
     '<div class="row-actions"><button class="btn" data-act="backup">Сохранить копию</button>'+
-    '<label class="btn" style="cursor:pointer;display:inline-flex;align-items:center;background:var(--surface-2);color:var(--ink);border:1px solid var(--line)">Загрузить из копии<input type="file" accept=".json,application/json" data-file="restore" hidden></label></div></section>';
+    '<label class="btn" style="cursor:pointer;display:inline-flex;align-items:center;background:var(--surface-2);color:var(--ink);border:1px solid var(--line)">Загрузить из копии<input type="file" accept=".json,application/json" data-file="restore" hidden></label></div><p class="muted" style="margin:12px 0 0;font-size:12px">'+APP_VER+'</p></section>';
 }
 
 function listItems(){
@@ -867,8 +860,7 @@ function renderSheet(){
   if(ui.sheet==='list'){
     el.innerHTML='<div class="sheet-bg" data-act="closesheet"></div><div class="sheet-card" role="dialog" aria-label="Все клиенты"><div class="sheet-h"><h2>Клиенты</h2><button class="ghost" data-act="closesheet">Закрыть</button></div><input id="qinp" class="fld" type="search" placeholder="Найти по имени" data-f="q" value="'+fv('q')+'"><ul class="list" id="list">'+listItems()+'</ul></div>';
   }else{
-    const tpl=ui.f['n.tpl']||'empty';
-    el.innerHTML='<div class="sheet-bg" data-act="closesheet"></div><div class="sheet-card" role="dialog" aria-label="Новый клиент"><div class="sheet-h"><h2>Новый клиент</h2><button class="ghost" data-act="closesheet">Закрыть</button></div>'+
+        el.innerHTML='<div class="sheet-bg" data-act="closesheet"></div><div class="sheet-card" role="dialog" aria-label="Новый клиент"><div class="sheet-h"><h2>Новый клиент</h2><button class="ghost" data-act="closesheet">Закрыть</button></div>'+
       '<label class="lab">Имя<input id="ninp" class="fld" data-f="n.name" data-enter="createclient" value="'+fv('n.name')+'"></label>'+
       '<label class="lab">Цель<input class="fld" data-f="n.goal" data-enter="createclient" placeholder="Например, набор массы" value="'+fv('n.goal')+'"></label>'+
       '<p class="muted" style="margin:0">Программу вы составите сами на вкладке «Программа».</p>'+
@@ -911,7 +903,6 @@ const ACT={
   openlist(){ui.sheet='list';ui.f.q='';renderSheet();setTimeout(()=>{const i=$('#qinp');if(i)i.focus()},60)},
   newclient(){ui.sheet='new';renderSheet();setTimeout(()=>{const i=$('#ninp');if(i)i.focus()},60)},
   closesheet(){ui.sheet=null;renderSheet()},
-  tpl(el){ui.f['n.tpl']=el.dataset.v;renderSheet()},
   createclient(){
     const name=String(ui.f['n.name']||'').trim();
     if(!name){toast('Введите имя клиента');return}
@@ -990,8 +981,11 @@ const ACT={
     mut(c=>{const arr=c.program.days.find(d=>d.id===e.dayId).exercises,i=arr.findIndex(x=>x.id===e.exId),j=i+dir;
       if(j>=0&&j<arr.length){const fl=arr.map(x=>!!x.linkNext);const t=arr[i];arr[i]=arr[j];arr[j]=t;arr.forEach((x,k)=>{x.linkNext=fl[k]})}});
   },
-  delex(el){twoTap(el,()=>{const e=ui.editEx,id=el.dataset.id;ui.editEx=null;clearForms(['e.']);
-    mut(c=>{c.program.days.forEach(d=>{d.exercises=d.exercises.filter(x=>x.id!==id);if(d.exercises.length)d.exercises[d.exercises.length-1].linkNext=false})});toast('Упражнение удалено')})},
+  delex(el){twoTap(el,()=>{const id=el.dataset.id;ui.editEx=null;clearForms(['e.']);
+    mut(c=>{c.program.days.forEach(d=>{const i=d.exercises.findIndex(x=>x.id===id);if(i>=0)takeOut(d.exercises,i)})});toast('Упражнение удалено')})},
+  delexrow(el){twoTap(el,()=>{const id=el.dataset.id;
+    if(ui.editEx&&ui.editEx.exId===id){ui.editEx=null;clearForms(['e.'])}
+    mut(c=>{c.program.days.forEach(d=>{const i=d.exercises.findIndex(x=>x.id===id);if(i>=0)takeOut(d.exercises,i)})});toast('Упражнение удалено')})},
   addex(el){
     const dayId=el.dataset.day,k='a:'+dayId+':';
     const name=String(ui.f[k+'name']||'').trim();

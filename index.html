@@ -430,7 +430,7 @@ function newEntry(ex){
 function getDraft(c,day){
   const k=c.id+':'+day.id;
   let d=drafts[k];
-  if(!d){d=drafts[k]={date:todayISO(),note:'',entries:[]}}
+  if(!d){d=drafts[k]={date:todayISO(),note:'',no:'',entries:[]}}
   const byId=new Map(d.entries.map(e=>[e.exId,e]));
   const extras=d.entries.filter(e=>e.extra);
   d.entries=day.exercises.map(ex=>{
@@ -449,17 +449,22 @@ function blockSessions(c,b){
   return c.sessions.map((s,i)=>({s:s,i:i})).filter(x=>x.s.blockId===b.id)
     .sort((p,q)=>p.s.date<q.s.date?-1:p.s.date>q.s.date?1:p.i-q.i).map(x=>x.s);
 }
+function blockNums(c,b){
+  let prev=0;
+  return blockSessions(c,b).map(s=>{const n=(s.no>0)?s.no:prev+1;prev=n;return {s:s,n:n}});
+}
+function blockDone(c,b){return blockNums(c,b).reduce((m,x)=>Math.max(m,x.n),0)}
 function blockInfo(c,b){
-  const sess=blockSessions(c,b),total=b.weeks*b.perWeek,mon=mondayOf(b.start);
+  const sess=blockSessions(c,b),total=b.weeks*b.perWeek,mon=mondayOf(b.start),done=blockDone(c,b);
   const raw=Math.floor(diffDays(mon,todayISO())/7)+1;
-  return {sess:sess,done:sess.length,total:total,left:Math.max(0,total-sess.length),mon:mon,end:addDays(mon,b.weeks*7-1),week:raw,state:raw<1?'before':raw>b.weeks?'after':'during'};
+  return {sess:sess,done:done,total:total,left:Math.max(0,total-done),mon:mon,end:addDays(mon,b.weeks*7-1),week:raw,state:raw<1?'before':raw>b.weeks?'after':'during'};
 }
 function sessionNums(c){
   const m=new Map();
-  c.blocks.forEach(b=>{blockSessions(c,b).forEach((s,i)=>m.set(s.id,{n:i+1,total:b.weeks*b.perWeek}))});
+  c.blocks.forEach(b=>{blockNums(c,b).forEach(x=>m.set(x.s.id,{n:x.n,total:b.weeks*b.perWeek}))});
   return m;
 }
-function saveNo(c){const ab=activeBlock(c);return ab?' №'+(blockSessions(c,ab).length+1)+' · ':': '}
+function saveNo(c,d){const ab=activeBlock(c);if(!ab)return ': ';const m=parseInt(d&&d.no,10);return ' №'+(m>0?m:blockDone(c,ab)+1)+' · '}
 function weekLabel(info,b){
   if(info.state==='before')return 'старт '+fmtDate(b.start);
   if(info.state==='after')return 'срок блока вышел';
@@ -501,9 +506,9 @@ function blockExNames(sess){
   sess.forEach(s=>s.entries.forEach(e=>{const k=String(e.name).trim().toLowerCase(),o=m.get(k);if(o)o.n++;else m.set(k,{name:e.name,n:1,i:m.size})}));
   return Array.from(m.values()).sort((a,b)=>b.n-a.n||a.i-b.i).map(x=>x.name);
 }
-function exSeries(sess,name,mode){
+function exSeries(sess,name,mode,nums){
   const key=String(name).trim().toLowerCase(),raw=[];
-  sess.forEach((s,i)=>{const e=s.entries.find(e=>String(e.name).trim().toLowerCase()===key);if(e)raw.push({n:i+1,date:s.date,sets:e.sets})});
+  sess.forEach((s,i)=>{const e=s.entries.find(e=>String(e.name).trim().toLowerCase()===key);if(e)raw.push({n:(nums&&nums.get(s.id)?nums.get(s.id).n:i+1),date:s.date,sets:e.sets})});
   const usesW=raw.some(p=>p.sets.some(t=>t.w!=null));
   const pts=raw.map(p=>{
     let v=null;
@@ -557,7 +562,7 @@ function blockProgress(c,b,info){
   if(!names.length)return h+'<p class="muted">После первой сохранённой тренировки здесь появится график по упражнениям.</p></section>';
   const key=c.id+':'+b.id;
   let ex=ui.bex[key];if(!ex||names.indexOf(ex)<0)ex=names[0];
-  const mode=ui.bmode==='v'?'v':'w',S=exSeries(info.sess,ex,mode);
+  const mode=ui.bmode==='v'?'v':'w',S=exSeries(info.sess,ex,mode,sessionNums(c));
   h+='<div class="pills">'+names.map(n=>'<button class="pill'+(n===ex?' on':'')+'" data-act="bex" data-name="'+esc(n)+'">'+esc(n)+'</button>').join('')+'</div>';
   h+='<div class="tpls"><button class="pill'+(mode==='w'?' on':'')+'" data-act="bmode" data-v="w">'+(S.usesW?'Рабочий вес':'Макс. повторы')+'</button><button class="pill'+(mode==='v'?' on':'')+'" data-act="bmode" data-v="v">Объём</button></div>';
   if(!S.pts.length)return h+'<p class="muted">По этому упражнению пока нет данных.</p></section>';
@@ -571,8 +576,8 @@ function blockFormHtml(c){
   const isNew=ui.blockForm==='new',b=isNew?null:c.blocks.find(x=>x.id===ui.blockForm);
   const g=(k,fb)=>ui.f[k]!==undefined?ui.f[k]:fb;
   const title=g('b.title',b?b.title:''),start=g('b.start',b?b.start:todayISO());
-  const weeks=parseInt(g('b.weeks',b?b.weeks:8),10)||8,per=parseInt(g('b.per',b?b.perWeek:3),10)||3;
-  const wk=Array.from(new Set([4,6,8,10,12,weeks])).sort((x,y)=>x-y),pr=Array.from(new Set([2,3,4,per])).sort((x,y)=>x-y);
+  const weeks=parseInt(g('b.weeks',b?b.weeks:8),10)||8,per=Math.max(2,Math.min(4,parseInt(g('b.per',b?b.perWeek:3),10)||3));
+  const wk=Array.from(new Set([4,6,8,10,12,weeks])).sort((x,y)=>x-y),pr=[2,3,4];
   const ok=/^\d{4}-\d{2}-\d{2}$/.test(start);
   const note=ok?'Всего тренировок: '+(weeks*per)+'. Блок идёт до '+fmtDate(addDays(mondayOf(start),weeks*7-1))+'. Недели считаются с понедельника.':'Укажите дату старта.';
   return '<section class="panel"><h2>'+(isNew?'Новый блок':'Править блок')+'</h2>'+
@@ -681,7 +686,9 @@ function viewToday(c){
   if(!days.length)return '<section class="panel"><h2>Программы пока нет</h2><p class="muted">Добавьте дни и упражнения, и здесь появится журнал тренировки с прошлыми весами.</p><div class="row-actions"><button class="btn" data-act="tab" data-tab="prog">Составить программу</button></div></section>';
   const day=dayOf(c),d=getDraft(c,day);
   let h=blockBanner(c)+'<div class="pills">'+days.map(x=>'<button class="pill'+(x.id===day.id?' on':'')+'" data-act="day" data-id="'+esc(x.id)+'">'+esc(x.title)+'</button>').join('')+'</div>';
-  h+='<label class="lab" style="max-width:220px">Дата тренировки<input class="fld" type="date" data-d="date" value="'+esc(d.date)+'"></label>';
+  const abk=activeBlock(c);
+  h+='<div class="grid2" style="align-items:end"><label class="lab">Дата тренировки<input class="fld" type="date" data-d="date" value="'+esc(d.date)+'"></label>'+
+    (abk?'<label class="lab">Номер в блоке<input class="fld" inputmode="numeric" autocomplete="off" data-d="no" value="'+esc(d.no||'')+'" placeholder="Авто: №'+(blockDone(c,abk)+1)+'"></label>':'')+'</div>';
   if(!d.entries.length)h+='<section class="panel"><p class="muted">В этом дне нет упражнений. Добавьте их на вкладке «Программа».</p></section>';
   const okey=c.id+':'+day.id;
   const lab=grpLabels(d.entries);
@@ -713,7 +720,7 @@ function viewToday(c){
   });
   h+='<section class="panel"><h3>Упражнение вне программы</h3><div class="row-actions" style="flex-wrap:nowrap"><input class="fld" list="exlist" placeholder="Название" data-f="extra" data-enter="addextra" value="'+fv('extra')+'"><button class="ghost" data-act="addextra" style="flex:none">Добавить</button></div></section>';
   h+='<section class="panel"><label class="lab">Заметка по тренировке<textarea class="fld" data-d="note" placeholder="Самочувствие, что поменять в следующий раз">'+esc(d.note)+'</textarea></label>'+
-    '<button class="btn" data-act="savesession">Сохранить тренировку'+saveNo(c)+esc(day.title)+'</button></section>';
+    '<button class="btn" data-act="savesession">Сохранить тренировку'+saveNo(c,d)+esc(day.title)+'</button></section>';
   // history
   const ss=[...c.sessions].sort(byDateDesc);
   if(ss.length){
@@ -864,7 +871,7 @@ function renderSheet(){
     el.innerHTML='<div class="sheet-bg" data-act="closesheet"></div><div class="sheet-card" role="dialog" aria-label="Новый клиент"><div class="sheet-h"><h2>Новый клиент</h2><button class="ghost" data-act="closesheet">Закрыть</button></div>'+
       '<label class="lab">Имя<input id="ninp" class="fld" data-f="n.name" data-enter="createclient" value="'+fv('n.name')+'"></label>'+
       '<label class="lab">Цель<input class="fld" data-f="n.goal" data-enter="createclient" placeholder="Например, набор массы" value="'+fv('n.goal')+'"></label>'+
-      '<div class="lab">Начать с программы<div class="tpls">'+Object.keys(TPL_LABEL).map(k=>'<button class="pill'+(tpl===k?' on':'')+'" data-act="tpl" data-v="'+k+'">'+TPL_LABEL[k]+'</button>').join('')+'</div></div>'+
+      '<p class="muted" style="margin:0">Программу вы составите сами на вкладке «Программа».</p>'+
       '<button class="btn" data-act="createclient">Создать клиента</button></div>';
   }
 }
@@ -877,7 +884,7 @@ function render(){
   if(!ready){view.innerHTML='<p class="muted">Загружаю клиентов…</p>';nav.hidden=true;return}
   const c=cur();
   if(!c){
-    view.innerHTML='<section class="empty"><h1>Клиентов пока нет</h1><p class="muted">Добавьте первого клиента: имя, цель и шаблон программы. Остальное можно дописать позже.</p><button class="btn" data-act="newclient">Добавить клиента</button></section>';
+    view.innerHTML='<section class="empty"><h1>Клиентов пока нет</h1><p class="muted">Добавьте первого клиента: имя и цель. Программу вы составите сами.</p><button class="btn" data-act="newclient">Добавить клиента</button></section>';
     nav.hidden=true;renderSheet();return;
   }
   nav.hidden=false;
@@ -902,13 +909,13 @@ const ACT={
     const on=document.querySelector('.chip.on');if(on&&on.scrollIntoView)on.scrollIntoView({inline:'center',block:'nearest'})},
   tab(el){ui.tab=el.dataset.tab;ui.armed=null;ui.editEx=null;ui.editDay=null;ui.blockForm=null;clearForms(['b.']);render();window.scrollTo(0,0)},
   openlist(){ui.sheet='list';ui.f.q='';renderSheet();setTimeout(()=>{const i=$('#qinp');if(i)i.focus()},60)},
-  newclient(){ui.sheet='new';if(!ui.f['n.tpl'])ui.f['n.tpl']='full';renderSheet();setTimeout(()=>{const i=$('#ninp');if(i)i.focus()},60)},
+  newclient(){ui.sheet='new';renderSheet();setTimeout(()=>{const i=$('#ninp');if(i)i.focus()},60)},
   closesheet(){ui.sheet=null;renderSheet()},
   tpl(el){ui.f['n.tpl']=el.dataset.v;renderSheet()},
   createclient(){
     const name=String(ui.f['n.name']||'').trim();
     if(!name){toast('Введите имя клиента');return}
-    const c=norm({id:uid(),name:name,goal:String(ui.f['n.goal']||'').trim(),startDate:todayISO(),height:'',targetWeight:'',notes:'',program:{days:TEMPLATES[ui.f['n.tpl']||'empty']()},measurements:[],sessions:[],createdAt:Date.now()});
+    const c=norm({id:uid(),name:name,goal:String(ui.f['n.goal']||'').trim(),startDate:todayISO(),height:'',targetWeight:'',notes:'',program:{days:[]},measurements:[],sessions:[],createdAt:Date.now()});
     clearForms(['n.']);
     clients.push(c);sortClients();currentId=c.id;resetClientUi();
     ui.tab=c.program.days.length?'today':'prog';ui.sheet=null;
@@ -932,12 +939,22 @@ const ACT={
     });
     if(!entries.length){toast('Заполните хотя бы один подход');return}
     const rec={id:uid(),date:d.date||todayISO(),dayId:day.id,dayTitle:day.title,entries:entries,note:String(d.note||'').trim()};
-    const ab=activeBlock(c);if(ab)rec.blockId=ab.id;
+    const ab=activeBlock(c);
+    if(ab){
+      rec.blockId=ab.id;
+      const auto=blockDone(c,ab)+1,want=parseInt(d.no,10);
+      if(String(d.no||'').trim()!==''){
+        const tot=ab.weeks*ab.perWeek;
+        if(!(want>=1&&want<=tot)){toast('Номер тренировки: от 1 до '+tot);return}
+        if(blockNums(c,ab).some(x=>x.n===want)){toast('Тренировка №'+want+' в этом блоке уже записана');return}
+        if(want!==auto)rec.no=want;
+      }
+    }
     delete drafts[c.id+':'+day.id];
     const days=c.program.days,i=days.findIndex(x=>x.id===day.id);
     ui.dayByClient[c.id]=days[(i+1)%days.length].id;
     mut(c=>c.sessions.push(rec));
-    const nn=ab?blockSessions(cur(),ab).length:0;
+    const nn=ab?blockDone(cur(),ab):0;
     window.scrollTo(0,0);toast(ab?'Тренировка '+nn+' из '+(ab.weeks*ab.perWeek)+' сохранена':'Тренировка сохранена');
   },
   togglesession(el){ui.openSession=ui.openSession===el.dataset.id?null:el.dataset.id;render()},
@@ -1031,7 +1048,7 @@ const ACT={
     const title=String(g('b.title',old?old.title:'')).trim()||('Блок '+(c.blocks.length+(isNew?1:0)));
     const start=String(g('b.start',old?old.start:todayISO()));
     const weeks=Math.max(1,Math.min(24,parseInt(g('b.weeks',old?old.weeks:8),10)||8));
-    const per=Math.max(1,Math.min(7,parseInt(g('b.per',old?old.perWeek:3),10)||3));
+    const per=Math.max(2,Math.min(4,parseInt(g('b.per',old?old.perWeek:3),10)||3));
     if(!/^\d{4}-\d{2}-\d{2}$/.test(start)){toast('Укажите дату старта');return}
     const id=isNew?uid():old.id;
     clearForms(['b.']);ui.blockForm=null;

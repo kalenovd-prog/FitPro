@@ -132,6 +132,30 @@ textarea.fld{min-height:84px;resize:vertical}
 .day-h{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--line)}
 .day-edit{padding:12px 14px;border-bottom:1px solid var(--line);background:var(--surface-2);display:flex;flex-direction:column;gap:10px}
 .exrow{width:100%;text-align:left;background:transparent;border:0;border-top:1px solid var(--line);padding:12px 14px;display:flex;justify-content:space-between;gap:12px;align-items:baseline}
+.sw{position:fixed;left:0;right:0;bottom:calc(57px + env(safe-area-inset-bottom,0px));z-index:5;background:var(--surface);border-top:1px solid var(--line);box-shadow:0 -4px 14px var(--shade)}
+.side .sw{left:calc(72px + env(safe-area-inset-left,0px))}
+.sw-in{display:flex;align-items:center;gap:10px;padding-top:6px;padding-bottom:6px}
+.sw-t{flex:1;font-family:var(--display);font-size:28px;letter-spacing:.02em;font-variant-numeric:tabular-nums;line-height:1}
+.sw-t.run{color:var(--accent)}
+.sw .btn,.sw .ghost{min-height:42px;padding:0 16px;flex:none}
+body.hassw main{padding-bottom:160px}
+body.hassw .toast{bottom:calc(132px + env(safe-area-inset-bottom,0px))}
+.rir{display:flex;flex-direction:column;gap:6px;padding-top:12px;border-top:1px solid var(--line);margin-top:4px}
+.rir-l{font-size:14px;font-weight:500}
+.rir-l small{display:block;font-weight:400;color:var(--muted);font-size:12px}
+.rir-p{display:flex;gap:6px}
+.rir-p .pill{flex:1;padding:0;min-width:0;min-height:44px}
+.fig{display:flex;gap:14px;align-items:flex-start}
+.fig svg{flex:none;width:128px;height:auto}
+.fig .bd{fill:var(--surface-2);stroke:var(--muted);stroke-width:1.2;stroke-linejoin:round}
+.fig .ml{stroke:var(--accent);stroke-width:2.5;stroke-linecap:round}
+.fig .mb{fill:var(--accent)}
+.fig .mt{fill:var(--on-accent);font:600 9px var(--body);text-anchor:middle}
+.fig ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:9px;font-size:13px;min-width:0}
+.fig li{display:flex;gap:8px;align-items:flex-start;line-height:1.35}
+.fig li b{display:block;font-size:14px}
+.fig .nb{flex:none;width:20px;height:20px;border-radius:50%;background:var(--accent);color:var(--on-accent);font-weight:600;font-size:12px;display:grid;place-items:center;margin-top:1px}
+.mnb{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;background:var(--accent);color:var(--on-accent);font-size:11px;font-weight:600;margin-right:6px;vertical-align:1px}
 .exline{display:flex;align-items:stretch;border-top:1px solid var(--line)}
 .exline .exrow{border-top:0;flex:1;min-width:0}
 .xdel{flex:none;min-width:48px;border:0;background:transparent;color:var(--muted);font-size:22px;line-height:1;padding:0 12px;border-left:1px solid var(--line)}
@@ -252,6 +276,7 @@ section.bnr>div{display:flex;flex-direction:column;gap:2px;min-width:0}
 
 <header class="top"><div class="in bar" id="bar"></div></header>
 <main class="in" id="view"></main>
+<div class="sw" id="sw" hidden><div class="in sw-in"><span class="sw-t" id="swt" aria-live="off">00:00</span><button class="ghost" id="swreset" data-act="swreset">Сброс</button><button class="btn" id="swgo" data-act="swtoggle">Старт</button></div></div>
 <nav class="nav" id="nav" hidden></nav>
 <div class="sheet" id="sheet" hidden></div>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
@@ -279,19 +304,38 @@ const diffDays=(a,b)=>Math.round((parseISO(b)-parseISO(a))/864e5);
 
 const METRICS=[
   {k:'weight',l:'Вес',u:'кг',hint:'Вес'},
-  {k:'waist',l:'Талия',u:'см',hint:'Талия (по пупку)'},
-  {k:'chest',l:'Грудь',u:'см',hint:'Грудь'},
-  {k:'hips',l:'Бёдра',u:'см',hint:'Бёдра (по ягодицам)'},
-  {k:'arm',l:'Рука',u:'см',hint:'Рука (бицепс)'},
-  {k:'thigh',l:'Бедро',u:'см',hint:'Бедро (верхняя треть)'}
+  {k:'neck',l:'Шея',u:'см',hint:'Шея'},
+  {k:'chest',l:'Грудная клетка',u:'см',hint:'Грудная клетка'},
+  {k:'waist',l:'Талия',u:'см',hint:'Талия'},
+  {k:'belly',l:'Живот',u:'см',hint:'Живот'},
+  {k:'arm',l:'Бицепс',u:'см',hint:'Бицепс'},
+  {k:'hips',l:'Бёдра',u:'см',hint:'Бёдра'},
+  {k:'thigh',l:'Бедро',u:'см',hint:'Бедро'},
+  {k:'bf',l:'% жира',u:'%',hint:'% жира',calc:true}
 ];
+const MSETS={m:['neck','chest','waist','belly','arm'],f:['neck','chest','waist','belly','hips']};
+const MHOW={
+  neck:'по середине шеи, чуть ниже кадыка, голова прямо',
+  chest:'по линии сосков, руки опущены, на спокойном выдохе',
+  waist:'в самом узком месте корпуса, обычно чуть выше пупка',
+  belly:'на уровне пупка, живот расслаблен',
+  arm:'по самой широкой части бицепса, рука согнута и напряжена',
+  hips:'по самой выступающей части ягодиц, ноги вместе'
+};
+const mKey=k=>METRICS.find(x=>x.k===k);
+function metricsFor(c){
+  const set=MSETS[c.sex]||[],base=['weight'].concat(set);
+  if(c.sex&&num(c.height)>0)base.push('bf');
+  METRICS.forEach(m=>{if(!m.calc&&base.indexOf(m.k)<0&&c.measurements.some(r=>r[m.k]!=null))base.push(m.k)});
+  return base.map(mKey);
+}
 const EXERCISES=['Приседания со штангой','Приседания с резинкой','Жим штанги лёжа','Жим гантелей лёжа','Жим гантелей сидя','Тяга верхнего блока','Тяга нижнего блока','Тяга гантели в наклоне','Тяга резинки к поясу','Становая тяга','Румынская тяга','Жим ногами','Выпады','Болгарский сплит-присед','Ягодичный мостик','Отведение ноги с резинкой','Подъём на носки','Сгибание ног лёжа','Разгибание ног в тренажёре','Махи гантелей в стороны','Сгибание рук с гантелями','Разгибание рук на блоке','Отжимания','Подтягивания','Гиперэкстензия','Скручивания','Планка'];
 $('#exlist').innerHTML=EXERCISES.map(n=>'<option value="'+esc(n)+'">').join('');
 
 
 /* ---------- state ---------- */
 let clients=[],ready=false,mode='local',dbc=null,currentId=null;
-const ui={tab:'today',openEx:{},setFor:null,layout:'top',dayByClient:{},metric:'weight',blockView:{},bex:{},bmode:'w',blockForm:null,editEx:null,editDay:null,armed:null,histAll:false,openSession:null,f:{},sheet:null};
+const ui={schema:{},tab:'today',openEx:{},setFor:null,layout:'top',dayByClient:{},metric:'weight',blockView:{},bex:{},bmode:'w',blockForm:null,editEx:null,editDay:null,armed:null,histAll:false,openSession:null,f:{},sheet:null};
 const drafts={};
 const LS='trainer-journal-v1';
 const lsLoad=()=>{try{return JSON.parse(localStorage.getItem(LS)||'[]')}catch(e){return []}};
@@ -350,11 +394,16 @@ async function initStore(){
 /* ---------- helpers on client data ---------- */
 const byDateDesc=(a,b)=>a.date<b.date?1:a.date>b.date?-1:0;
 const lastSession=c=>c.sessions.length?[...c.sessions].sort(byDateDesc)[0]:null;
+function rirHtml(ei,val,tag){
+  const cur=val===undefined||val===null?'':String(val);
+  return '<div class="rir"><span class="rir-l">'+(tag?'<span class="gl">'+esc(tag)+'</span> ':'')+'ПВЗ после последнего подхода<small>сколько повторов ещё могли сделать</small></span><div class="rir-p">'+
+    [0,1,2,3,4,5].map(v=>'<button class="pill'+(cur===String(v)?' on':'')+'" data-act="rir" data-ei="'+ei+'" data-v="'+v+'" aria-pressed="'+(cur===String(v))+'">'+(v===5?'5+':v)+'</button>').join('')+'</div></div>';
+}
 function lastFor(c,name){
   const n=String(name).trim().toLowerCase();
   for(const s of [...c.sessions].sort(byDateDesc)){
     const e=s.entries.find(e=>String(e.name).trim().toLowerCase()===n);
-    if(e)return {date:s.date,sets:e.sets};
+    if(e)return {date:s.date,sets:e.sets,rir:e.rir};
   }
   return null;
 }
@@ -365,7 +414,25 @@ function fmtSet(s){
   return '—';
 }
 function volume(s){let v=0;s.entries.forEach(e=>e.sets.forEach(t=>{if(t.w!=null&&t.r!=null)v+=t.w*t.r}));return v}
+const BF_NEED={m:'шея и живот (по пупку)',f:'шея, талия и бёдра'};
+function navyBF(c,r){
+  const h=num(c.height);if(!(h>0)||!c.sex)return null;
+  let v;
+  if(c.sex==='m'){
+    if(r.neck==null||r.belly==null||!(r.belly>r.neck))return null;
+    v=495/(1.0324-0.19077*Math.log10(r.belly-r.neck)+0.15456*Math.log10(h))-450;
+  }else{
+    if(r.neck==null||r.waist==null||r.hips==null||!(r.waist+r.hips>r.neck))return null;
+    v=495/(1.29579-0.35004*Math.log10(r.waist+r.hips-r.neck)+0.22100*Math.log10(h))-450;
+  }
+  return isFinite(v)&&v>=2&&v<=65?Math.round(v*10)/10:null;
+}
+function weightAt(c,date){
+  const w=series(c,'weight').filter(r=>r.date<=date);
+  return w.length?w[w.length-1].weight:null;
+}
 function series(c,k){
+  if(k==='bf')return c.measurements.map(r=>{const v=navyBF(c,r);return v==null?null:Object.assign({},r,{bf:v})}).filter(Boolean).sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
   return c.measurements.filter(r=>r[k]!=null).sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
 }
 function dayOf(c){
@@ -668,6 +735,7 @@ function groupHtml(c,d,g,okey,day){
     });
     h+='</div>';
   }
+  mem.forEach((k,pi)=>{h+=rirHtml(k,d.entries[k].rir,g.letter+(pi+1))});
   const anyLast=mem.some(k=>lastFor(c,d.entries[k].name));
   return h+'<div class="ex-f"><button class="ghost" data-act="addround" data-g="'+g.start+'">+ Раунд</button>'+(anyLast?'<button class="ghost" data-act="copylastgrp" data-g="'+g.start+'">Как в прошлый раз</button>':'')+'<button class="ghost" data-act="exset" data-id="'+esc(gid)+'">Настройки</button></div>'+(ui.setFor===gid?linkPanelHtml(day,gid,true):'')+'</div></article>';
 }
@@ -687,14 +755,14 @@ function viewToday(c){
     const last=lastFor(c,e.name);
     const open=ui.openEx[okey]===e.exId;
     const filled=e.sets.map(s=>({w:num(s.w),r:num(s.r)})).filter(s=>s.w!=null||s.r!=null);
-    const sub=filled.length?'<span class="ex-sub got">Записано:'+filled.map(fmtSet).join(' · ')+'</span>':(last?'<span class="ex-sub">Прошлый раз: '+last.sets.map(fmtSet).join(' · ')+'</span>':(e.note?'<span class="ex-sub">'+esc(e.note)+'</span>':''));
+    const sub=filled.length?'<span class="ex-sub got">Записано:'+filled.map(fmtSet).join(' · ')+(String(e.rir||'')!==''?' · ПВЗ '+esc(e.rir):'')+'</span>':(last?'<span class="ex-sub">Прошлый раз: '+last.sets.map(fmtSet).join(' · ')+'</span>':(e.note?'<span class="ex-sub">'+esc(e.note)+'</span>':''));
     h+='<article class="ex acc'+(open?' open':'')+'"><button class="ex-hd" data-act="toggleex" data-key="'+esc(okey)+'" data-id="'+esc(e.exId)+'" aria-expanded="'+open+'"><span class="ex-t"><span class="ex-name">'+esc(e.name)+'</span>'+sub+'</span><span class="ex-meta">'+
       (filled.length?'<span class="ex-cnt'+(filled.length>=e.sets.length?' ok':'')+'">'+filled.length+'/'+e.sets.length+'</span>':'')+
       (e.plan?'<span class="plan">'+esc(e.plan)+'</span>':'')+'<span class="chev" aria-hidden="true"></span></span></button>';
     if(!open){h+='</article>';return}
     h+='<div class="ex-body">';
     if(e.note)h+='<p class="last">'+esc(e.note)+'</p>';
-    if(last)h+='<p class="last">Прошлый раз, '+fmtDate(last.date)+': '+last.sets.map(fmtSet).join(' · ')+'</p>';
+    if(last)h+='<p class="last">Прошлый раз, '+fmtDate(last.date)+': '+last.sets.map(fmtSet).join(' · ')+(last.rir!=null?' · ПВЗ '+last.rir:'')+'</p>';
     h+='<div class="sets"><div class="sets-h"><span></span><span>Вес, кг</span><span>Повторы</span><span></span></div>';
     e.sets.forEach((s,si)=>{
       const ls=last?(last.sets[si]||last.sets[last.sets.length-1]):null;
@@ -704,7 +772,7 @@ function viewToday(c){
         '<input inputmode="numeric" autocomplete="off" aria-label="Повторы, подход '+(si+1)+'" data-d="'+ei+','+si+',r" value="'+esc(s.r)+'" placeholder="'+esc(pr)+'">'+
         '<button class="x" data-act="rmset" data-ei="'+ei+'" data-si="'+si+'" aria-label="Убрать подход">×</button></div>';
     });
-    h+='</div><div class="ex-f"><button class="ghost" data-act="addset" data-ei="'+ei+'">+ Подход</button>'+
+    h+='</div>'+rirHtml(ei,e.rir)+'<div class="ex-f"><button class="ghost" data-act="addset" data-ei="'+ei+'">+ Подход</button>'+
       (last?'<button class="ghost" data-act="copylast" data-ei="'+ei+'">Как в прошлый раз</button>':'')+
       (e.extra?'<button class="ghost" data-act="rmextra" data-ei="'+ei+'">Убрать упражнение</button>':'<button class="ghost" data-act="exset" data-id="'+esc(e.exId)+'">Настройки</button>')+'</div>'+(!e.extra&&ui.setFor===e.exId?linkPanelHtml(day,e.exId,true):'')+'</div></article>';
   });
@@ -720,7 +788,7 @@ function viewToday(c){
       const open=ui.openSession===s.id;
       h+='<div class="hrow"><button class="hbtn" data-act="togglesession" data-id="'+esc(s.id)+'" aria-expanded="'+open+'"><span class="hdate">'+fmtDate(s.date)+'</span><span><b>'+(nums.get(s.id)?'№'+nums.get(s.id).n+' · ':'')+esc(s.dayTitle||'Тренировка')+'</b><br><span class="hsum">'+s.entries.length+' упр. · объём '+fmtBig(volume(s))+' кг</span></span></button>';
       if(open){
-        h+='<div class="hdetail">'+s.entries.map(e=>'<div>'+(e.tag?'<span class="gl">'+esc(e.tag)+'</span>':'')+'<b>'+esc(e.name)+'</b><br><span class="muted">'+e.sets.map(fmtSet).join(' · ')+'</span></div>').join('')+
+        h+='<div class="hdetail">'+s.entries.map(e=>'<div>'+(e.tag?'<span class="gl">'+esc(e.tag)+'</span>':'')+'<b>'+esc(e.name)+'</b><br><span class="muted">'+e.sets.map(fmtSet).join(' · ')+(e.rir!=null?' · ПВЗ '+e.rir:'')+'</span></div>').join('')+
           (s.note?'<div class="muted">'+esc(s.note)+'</div>':'')+
           '<div class="row-actions">'+armBtn('delsession',s.id,'Удалить запись')+'</div></div>';
       }
@@ -767,26 +835,69 @@ function chartSvg(c,m){
   }
   return s+'</svg>';
 }
+function bodySvg(sex,keys){
+  const F=sex==='f';
+  const torso=F?'M38 47C48 42 72 42 82 47L78 80C76 90 75 98 73 105C84 112 90 122 90 134L30 134C30 122 36 112 47 105C45 98 44 90 42 80Z'
+              :'M31 47C44 41 76 41 89 47L85 104L81 132L39 132L35 104Z';
+  const armL=F?'M37 47L28 100L23 142L32 144L41 108L43 62Z':'M31 47L22 100L16 142L26 144L35 108L39 62Z';
+  const armR=F?'M83 47L92 100L97 142L88 144L79 108L77 62Z':'M89 47L98 100L104 142L94 144L85 108L81 62Z';
+  const legs='M39 132L37 232L56 232L59 136Z M81 132L83 232L64 232L61 136Z';
+  const hw=F?{neck:6,chest:24,waist:16,belly:17,hips:29}:{neck:7,chest:29,waist:21,belly:22};
+  const Y={neck:37,chest:63,waist:83,belly:100,hips:122,arm:74};
+  let g='<svg viewBox="0 0 120 240" role="img" aria-label="Схема замеров"><g class="bd"><circle cx="60" cy="21" r="12"/><rect x="54" y="31" width="12" height="13" rx="3"/>'+
+    '<path d="'+torso+'"/><path d="'+armL+'"/><path d="'+armR+'"/><path d="'+legs+'"/></g>';
+  keys.forEach((k,i)=>{
+    const n=i+1,y=Y[k];
+    if(k==='arm'){
+      const x1=F?27:21,x2=F?42:38;
+      g+='<line class="ml" x1="'+x1+'" y1="'+(y+3)+'" x2="'+x2+'" y2="'+(y-3)+'"/><circle class="mb" cx="9" cy="'+y+'" r="7.5"/><text class="mt" x="9" y="'+(y+3.3)+'">'+n+'</text>';
+    }else{
+      const w=hw[k]+5;
+      g+='<line class="ml" x1="'+(60-w)+'" y1="'+y+'" x2="'+(60+w)+'" y2="'+y+'"/><circle class="mb" cx="'+(60+w+11)+'" cy="'+y+'" r="7.5"/><text class="mt" x="'+(60+w+11)+'" y="'+(y+3.3)+'">'+n+'</text>';
+    }
+  });
+  return g+'</svg>';
+}
+function schemaHtml(c){
+  const keys=MSETS[c.sex];if(!keys)return '';
+  const open=ui.schema[c.id]!==undefined?ui.schema[c.id]:!c.measurements.length;
+  let h='<section class="panel"><div class="section-h"><h2>Как измерять</h2><button class="ghost" data-act="schema">'+(open?'Скрыть':'Показать')+'</button></div>';
+  if(open)h+='<div class="fig">'+bodySvg(c.sex,keys)+'<ol>'+keys.map((k,i)=>'<li><span class="nb">'+(i+1)+'</span><span><b>'+esc(mKey(k).l)+'</b>'+esc(MHOW[k])+'</span></li>').join('')+'</ol></div>';
+  return h+'</section>';
+}
+function sexHtml(c){
+  return '<div class="lab">Пол<div class="tpls"><button class="pill'+(c.sex==='m'?' on':'')+'" data-act="setsex" data-v="m">Мужчина</button><button class="pill'+(c.sex==='f'?' on':'')+'" data-act="setsex" data-v="f">Женщина</button></div></div>';
+}
 function viewMeas(c){
-  const m=METRICS.find(x=>x.k===ui.metric)||METRICS[0];
+  const MS=metricsFor(c),m=MS.find(x=>x.k===ui.metric)||MS[0];
   const pts=series(c,m.k),tgt=m.k==='weight'?num(c.targetWeight):null;
-  let h='<section class="panel"><div class="mchips">'+METRICS.map(x=>'<button class="pill'+(x.k===m.k?' on':'')+'" data-act="metric" data-m="'+x.k+'">'+x.l+'</button>').join('')+'</div>';
+  let h=(c.sex?'':'<section class="panel"><h2>Для кого замеры</h2><p class="muted" style="margin:0 0 10px">Выберите пол клиента, и появится нужный набор замеров со схемой. Пока доступен только вес.</p>'+sexHtml(c)+'</section>')+'<section class="panel"><div class="mchips">'+MS.map(x=>'<button class="pill'+(x.k===m.k?' on':'')+'" data-act="metric" data-m="'+x.k+'">'+x.l+'</button>').join('')+'</div>';
   if(pts.length){
     const f=pts[0],l=pts[pts.length-1];
     h+='<div class="sum"><div><span class="big">'+fmtN(l[m.k])+'</span><span class="u">'+m.u+'</span></div><div class="dl">'+
       (pts.length>1?fmtDelta(l[m.k]-f[m.k])+' '+m.u+' с '+fmtDate(f.date):'первый замер '+fmtDate(f.date))+
       (tgt!=null?'<br>до цели '+fmtN(Math.abs(l[m.k]-tgt))+' кг':'')+'</div></div>';
+    if(m.k==='bf'){
+      const wt=l.weight!=null?l.weight:weightAt(c,l.date);
+      if(wt!=null)h+='<p class="muted" style="margin:8px 0 0">Жир ≈ '+fmtN(Math.round(wt*l.bf)/100)+' кг · сухая масса ≈ '+fmtN(Math.round(wt*(100-l.bf))/100)+' кг (вес '+fmtN(wt)+' кг)</p>';
+    }
   }
-  h+=chartSvg(c,m)+'</section>';
+  if(m.k==='bf'){
+    if(pts.length)h+=chartSvg(c,m);
+    else h+='<p class="muted">Пока нечего считать. Нужны в одном замере: '+BF_NEED[c.sex]+'. Рост указывается на вкладке «Клиент».</p>';
+    h+='<p class="muted" style="font-size:12px;margin:10px 0 0">Расчёт по формуле ВМС США (Navy): рост, шея, '+(c.sex==='m'?'живот на уровне пупка':'талия и бёдра')+'. Это оценка с погрешностью в несколько процентов, не медицинский результат. Сравнивайте динамику, а не одно число.</p></section>';
+  }else h+=chartSvg(c,m)+'</section>';
+  h+=schemaHtml(c);
   h+='<section class="panel"><h2>Новый замер</h2><label class="lab" style="max-width:220px">Дата<input class="fld" type="date" data-f="m.date" value="'+fv('m.date',todayISO())+'"></label><div class="grid2">'+
-    METRICS.map(x=>'<label class="lab">'+esc(x.hint)+', '+x.u+'<input class="fld" inputmode="decimal" autocomplete="off" data-f="m.'+x.k+'" data-enter="addmeas" value="'+fv('m.'+x.k)+'"></label>').join('')+
-    '</div><button class="btn" data-act="addmeas">Добавить замер</button></section>';
+    MS.filter(x=>!x.calc).map(x=>{const ni=(MSETS[c.sex]||[]).indexOf(x.k);return '<label class="lab">'+(ni>=0?'<span><span class="mnb">'+(ni+1)+'</span>':'<span>')+esc(x.hint)+', '+x.u+'</span><input class="fld" inputmode="decimal" autocomplete="off" data-f="m.'+x.k+'" data-enter="addmeas" value="'+fv('m.'+x.k)+'"></label>'}).join('')+
+    '</div>'+(c.sex&&!(num(c.height)>0)?'<p class="muted" style="margin:0">Чтобы считался % жира, укажите рост на вкладке «Клиент».</p>':'')+'<button class="btn" data-act="addmeas">Добавить замер</button></section>';
   const rs=[...c.measurements].sort(byDateDesc);
   if(rs.length){
     h+='<section class="panel"><div class="section-h"><h2>Все замеры</h2><span class="muted">'+rs.length+'</span></div><div>';
     const asc=[...c.measurements].sort((a,b)=>a.date<b.date?-1:1);
     rs.forEach(r=>{
-      const parts=METRICS.filter(x=>r[x.k]!=null).map(x=>'<span>'+x.l.toLowerCase()+'</span> '+fmtN(r[x.k]));
+      const parts=METRICS.filter(x=>!x.calc&&r[x.k]!=null).map(x=>'<span>'+x.l.toLowerCase()+'</span> '+fmtN(r[x.k]));
+      const bfv=navyBF(c,r);if(bfv!=null)parts.push('<span>% жира</span> '+fmtN(bfv));
       h+='<div class="rec"><span class="hdate">'+fmtDate(r.date)+'</span><span class="vals">'+parts.join(' · ')+'</span>'+armBtn('delmeas',r.id,'Удалить')+'</div>';
     });
     h+='</div></section>';
@@ -828,6 +939,7 @@ function viewProg(c){
 function viewClient(c){
   return '<section class="panel"><h2>Данные клиента</h2>'+
     '<label class="lab">Имя<input class="fld" data-f="p.name" value="'+fv('p.name',c.name)+'"></label>'+
+    sexHtml(c)+
     '<label class="lab">Цель<textarea class="fld" data-f="p.goal" placeholder="Например, минус 6 кг к декабрю">'+fv('p.goal',c.goal||'')+'</textarea></label>'+
     '<div class="grid3"><label class="lab">Рост, см<input class="fld" inputmode="decimal" data-f="p.height" value="'+fv('p.height',c.height||'')+'"></label>'+
     '<label class="lab">Цель по весу, кг<input class="fld" inputmode="decimal" data-f="p.target" value="'+fv('p.target',c.targetWeight||'')+'"></label>'+
@@ -837,7 +949,7 @@ function viewClient(c){
 }
 function lastBackup(){try{return localStorage.getItem(LB)||''}catch(e){return ''}}
 function mkEx(n,s,r,note){return {id:uid(),name:n,sets:String(s),reps:String(r),note:note||''}}
-const APP_VER='Версия 10 · 18.10.2026';
+const APP_VER='Версия 13 · 20.10.2026';
 function backupHtml(){
   const lb=lastBackup();
   return '<section class="panel"><h2>Резервная копия</h2>'+
@@ -863,23 +975,34 @@ function renderSheet(){
         el.innerHTML='<div class="sheet-bg" data-act="closesheet"></div><div class="sheet-card" role="dialog" aria-label="Новый клиент"><div class="sheet-h"><h2>Новый клиент</h2><button class="ghost" data-act="closesheet">Закрыть</button></div>'+
       '<label class="lab">Имя<input id="ninp" class="fld" data-f="n.name" data-enter="createclient" value="'+fv('n.name')+'"></label>'+
       '<label class="lab">Цель<input class="fld" data-f="n.goal" data-enter="createclient" placeholder="Например, набор массы" value="'+fv('n.goal')+'"></label>'+
+      '<div class="lab">Пол (для набора замеров)<div class="tpls"><button class="pill'+(ui.f['n.sex']==='m'?' on':'')+'" data-act="nsex" data-v="m">Мужчина</button><button class="pill'+(ui.f['n.sex']==='f'?' on':'')+'" data-act="nsex" data-v="f">Женщина</button></div></div>'+
       '<p class="muted" style="margin:0">Программу вы составите сами на вкладке «Программа».</p>'+
       '<button class="btn" data-act="createclient">Создать клиента</button></div>';
   }
 }
 
 const TABS=[['today','Тренировка'],['block','Блок'],['meas','Замеры'],['prog','Программа'],['client','Клиент']];
+const sw={run:false,t0:0,acc:0};
+const swMs=()=>sw.acc+(sw.run?Date.now()-sw.t0:0);
+function swFmt(ms){const t=Math.floor(ms/1000),h=Math.floor(t/3600),m=Math.floor(t%3600/60),s=t%60,p=n=>String(n).padStart(2,'0');return (h?h+':'+p(m):p(m))+':'+p(s)}
+function swPaint(){
+  const t=$('#swt'),g=$('#swgo');if(!t||!g)return;
+  t.textContent=swFmt(swMs());t.classList.toggle('run',sw.run);
+  g.textContent=sw.run?'Пауза':(sw.acc>0?'Дальше':'Старт');
+}
+setInterval(()=>{if(sw.run&&!$('#sw').hidden)swPaint()},250);
+function swShow(on){const e=$('#sw');e.hidden=!on;document.body.classList.toggle('hassw',on);if(on)swPaint()}
 function render(){
   const y=window.scrollY;
   renderBar();
   const view=$('#view'),nav=$('#nav');
-  if(!ready){view.innerHTML='<p class="muted">Загружаю клиентов…</p>';nav.hidden=true;return}
+  if(!ready){view.innerHTML='<p class="muted">Загружаю клиентов…</p>';nav.hidden=true;swShow(false);return}
   const c=cur();
   if(!c){
     view.innerHTML='<section class="empty"><h1>Клиентов пока нет</h1><p class="muted">Добавьте первого клиента: имя и цель. Программу вы составите сами.</p><button class="btn" data-act="newclient">Добавить клиента</button></section>';
-    nav.hidden=true;renderSheet();return;
+    nav.hidden=true;swShow(false);renderSheet();return;
   }
-  nav.hidden=false;
+  nav.hidden=false;swShow(ui.tab==='today');
   nav.innerHTML='<div class="in tabs">'+TABS.map(t=>'<button class="tab'+(ui.tab===t[0]?' on':'')+'" data-act="tab" data-tab="'+t[0]+'">'+t[1]+'</button>').join('')+'</div>';
   const body=ui.tab==='block'?viewBlockTab(c):ui.tab==='meas'?viewMeas(c):ui.tab==='prog'?viewProg(c):ui.tab==='client'?viewClient(c):viewToday(c);
   view.innerHTML=(mode==='local'?'<p class="notice">Данные сохраняются только в этом браузере.</p>':'')+viewHead(c)+body;
@@ -907,6 +1030,7 @@ const ACT={
     const name=String(ui.f['n.name']||'').trim();
     if(!name){toast('Введите имя клиента');return}
     const c=norm({id:uid(),name:name,goal:String(ui.f['n.goal']||'').trim(),startDate:todayISO(),height:'',targetWeight:'',notes:'',program:{days:[]},measurements:[],sessions:[],createdAt:Date.now()});
+    if(ui.f['n.sex']==='m'||ui.f['n.sex']==='f')c.sex=ui.f['n.sex'];
     clearForms(['n.']);
     clients.push(c);sortClients();currentId=c.id;resetClientUi();
     ui.tab=c.program.days.length?'today':'prog';ui.sheet=null;
@@ -926,7 +1050,7 @@ const ACT={
     const lab=grpLabels(d.entries);
     d.entries.forEach((e,ei)=>{
       const sets=e.sets.map(s=>({w:num(s.w),r:num(s.r)})).filter(s=>s.w!=null||s.r!=null);
-      if(sets.length){const o={name:e.name,sets:sets};if(lab[ei])o.tag=lab[ei].letter+lab[ei].pos;entries.push(o)}
+      if(sets.length){const o={name:e.name,sets:sets};if(lab[ei])o.tag=lab[ei].letter+lab[ei].pos;const rv=String(e.rir===undefined?'':e.rir);if(rv!=='')o.rir=+rv;entries.push(o)}
     });
     if(!entries.length){toast('Заполните хотя бы один подход');return}
     const rec={id:uid(),date:d.date||todayISO(),dayId:day.id,dayTitle:day.title,entries:entries,note:String(d.note||'').trim()};
@@ -952,9 +1076,12 @@ const ACT={
   delsession(el){twoTap(el,()=>{const id=el.dataset.id;ui.openSession=null;mut(c=>{c.sessions=c.sessions.filter(s=>s.id!==id)});toast('Запись удалена')})},
   histall(){ui.histAll=true;render()},
   metric(el){ui.metric=el.dataset.m;render()},
+  schema(){const c=cur(),open=ui.schema[c.id]!==undefined?ui.schema[c.id]:!c.measurements.length;ui.schema[c.id]=!open;render()},
+  setsex(el){const v=el.dataset.v;mut(c=>{c.sex=v});toast(v==='m'?'Замеры: мужской набор':'Замеры: женский набор')},
+  nsex(el){ui.f['n.sex']=el.dataset.v;renderSheet()},
   addmeas(){
     const rec={id:uid(),date:ui.f['m.date']||todayISO()};let any=false;
-    METRICS.forEach(m=>{const v=num(ui.f['m.'+m.k]);if(v!=null){rec[m.k]=v;any=true}});
+    metricsFor(cur()).filter(m=>!m.calc).forEach(m=>{const v=num(ui.f['m.'+m.k]);if(v!=null){rec[m.k]=v;any=true}});
     if(!any){toast('Введите хотя бы один замер');return}
     clearForms(['m.']);mut(c=>c.measurements.push(rec));toast('Замер добавлен');
   },
@@ -1103,6 +1230,9 @@ const ACT={
     for(let k=g.start;k<=g.end;k++){const e=d.entries[k],l=lastFor(c,e.name);if(l)e.sets=l.sets.map(s=>({w:s.w!=null?String(s.w):'',r:s.r!=null?String(s.r):''}))}render()},
   toggleex(el){const k=el.dataset.key;ui.openEx[k]=ui.openEx[k]===el.dataset.id?null:el.dataset.id;ui.setFor=null;render()},
   backup(){doBackup()},
+  swtoggle(){if(sw.run){sw.acc+=Date.now()-sw.t0;sw.run=false}else{sw.t0=Date.now();sw.run=true}swPaint()},
+  swreset(){sw.run=false;sw.acc=0;swPaint()},
+  rir(el){const c=cur(),d=getDraft(c,dayOf(c)),e=d.entries[+el.dataset.ei];if(!e)return;const v=el.dataset.v;e.rir=String(e.rir)===v?'':v;render()},
   layout(){ui.layout=ui.layout==='side'?'top':'side';try{localStorage.setItem(LAY,ui.layout)}catch(e){}render();window.scrollTo(0,0)},
   delclient(el){twoTap(el,()=>{
     const id=currentId;clients=clients.filter(c=>c.id!==id);
